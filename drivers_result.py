@@ -21,12 +21,12 @@ class Result(Scene):
         serverT = Text('SERVER').scale(0.5).align_to(config.right_side, RIGHT).rotate(-PI/2)
         self.add(dbT, appT, driverT, divider, clientT, serverT)
 
-        # TODO add CLIENT and SERVER and draw shallow line
-        #return
         ## query from app to db
+        content_y = 0
         queryT = Text('Query')
-        self.add(queryT.next_to(appT, DOWN, buff=LARGE_BUFF))
+        queryT.move_to((appT.get_x(), content_y, 0))
         self.describe(Text('Your application crafts a Cypher query.'))
+        self.play(FadeIn(queryT))
         self.wait()
         self.play(queryT.animate.move_to((driverT.get_x(), queryT.get_y(), 0)))
         query_box = SurroundingRectangle(queryT, buff=SMALL_BUFF, color=YELLOW)
@@ -34,6 +34,7 @@ class Result(Scene):
         self.play(Create(query_box), run_time=0.8)
         query = VGroup(queryT, query_box)
         self.play(query.animate.move_to((dbT.get_x(), queryT.get_y(), 0)), run_time=0.8)
+        self.wait()
 
         ## db loading
         self.describe(Text('The database fetches the result.'))
@@ -44,8 +45,6 @@ class Result(Scene):
         self.play(MoveAlongPath(loader, path), rate_func=smooth, run_time=0.8)
         self.play(FadeOut(loader), run_time=0.5)
 
-        content_y = 0
-
         ## records stream from db to driver
         record_size = (0.4, 0.3)
         record_big_size = (4, 1)
@@ -53,7 +52,6 @@ class Result(Scene):
         driver_buf_size = 25
         ncols = 5
         nrows = int(driver_buf_size/ncols)
-        #TODO align driver_buf better
         driver_buf = Rectangle(width=record_size[0]*ncols, height=record_size[1]*nrows).move_to((driverT.get_x(), content_y, 0))
         records_in_driver_buff = []
         records_in_db_buff = []
@@ -76,17 +74,15 @@ class Result(Scene):
             )'''
 
         for i in range(total_records):
-            # TODO records build a mountain
             # record under db
             recordT = Text(f'#{i}').set_z_index(i+1)  # z index for rectangle fill
             record_box = Rectangle(width=record_size[0], height=record_size[1], color=WHITE, fill_color=BLACK, fill_opacity=0.8).set_z_index(i)
             recordT.scale_to_fit_width(record_box.width-0.1)
             pos = (dbT.get_x(), content_y, 0) + self.rand_displacement()
-            record_db = VGroup(recordT, record_box).move_to(pos)#.rotate(PI*random()*0.1)
+            record_db = VGroup(recordT, record_box).move_to(pos)
 
             if i < driver_buf_size:
                 # record in driver buffer
-                #buff_pos = (driver_buf.get_left()[0], driver_buf.get_top()[1], 0.0)
                 recordT = Text(f'#{i}').set_z_index(i+1)
                 record_box = Rectangle(width=record_size[0], height=record_size[1], color=WHITE, fill_color=BLACK, fill_opacity=0.8).set_z_index(i)
                 recordT.scale_to_fit_width(record_box.width-0.1)  # some padding
@@ -112,20 +108,23 @@ class Result(Scene):
 
         self.describe(Text('As soon as results are ready, Neo4j sends them over to the driver.\nResults are stored in a buffer until your application asks for them.'))
         self.play(FadeIn(driver_buf), LaggedStart(*anims_to_driver_buff, lag_ratio=0.25))
+        self.wait()
 
-        self.describe(Text('When the driver buffer is full, further records wait on the server-side.'))
-        self.play(LaggedStart(*anims_to_db_buff, lag_ratio=0.25))
-
-        self.describe(Text('As soon as some records are available in the driver buffer, your application cat fetch them.\nThe server can continue fetching more results.'))
+        self.describe(Text('As soon as some records are available in the driver buffer, your application can fetch them.\nThe server can continue fetching more results.'))
         app_action_next = Text('next()').scale(0.8).next_to(appT, DOWN, buff=0.5)
-        # self.play(FadeIn(app_action), enqueue=True)
         self.play(Indicate(app_action_next), records_in_driver_buff[0].animate.move_to((appT.get_x(), content_y, 0) + self.rand_displacement(0.3)))
         self.wait()
         self.play(Indicate(app_action_next), records_in_driver_buff[1].animate.move_to((appT.get_x(), content_y, 0) + self.rand_displacement(0.3)))
         self.wait()
+
+        self.describe(Text('When the driver buffer is full, further records wait on the server-side.'))
+        self.play(LaggedStart(*anims_to_db_buff, lag_ratio=0.25), enqueue=True)
+
+        #TODO arrows with captions specific to each section
+
         app_action_fetch = Text('fetch()').scale(0.8).next_to(appT, DOWN, buff=0.5)
         anims = [r.animate.move_to((appT.get_x(), content_y, 0) + self.rand_displacement(0.3)) for r in records_in_driver_buff[2:-5]]
-        self.play(ReplacementTransform(app_action_next, app_action_fetch), run_time=0.3)
+        self.play(ReplacementTransform(app_action_next, app_action_fetch), run_time=0.3, enqueue=True)
         self.play(Indicate(app_action_fetch), LaggedStart(*anims, lag_ratio=0.25))
         self.play(FadeOut(app_action_fetch), run_time=0.3)
 
@@ -156,12 +155,14 @@ class Result(Scene):
             LaggedStart(*anims_to_driver_buff, lag_ratio=0.25)
         )
 
-        self.describe(Text('If .consume() is called at any point, all results in driver and server buffers are discarded and the server \nsends the summary of results. Only what your app had fetched and stored is retained.'))
+        self.describe(Text('If .consume() is called at any point, all buffered results are discarded and the server \nsends the summary of results. Only what your app had fetched and stored is retained.'))
         app_action_consume = Text('consume()').scale(0.8).next_to(appT, DOWN, buff=0.5)
         to_discard = VGroup(*[r for r in (records_in_driver_buff + records_in_db_buff)])
         self.play(Indicate(app_action_consume), FadeOut(to_discard))
         self.wait()
         self.play(FadeOut(app_action_consume))
+
+        #TODO client process records
 
         self.wait(5)
 
@@ -170,21 +171,10 @@ class Result(Scene):
         text.move_to(caption_pos)
         text.scale(0.4)
         if self.caption == None:
-            self.play(Write(text), run_time=0.5, enqueue=True)
+            self.play(Write(text), run_time=0.4, enqueue=True)
         else:
             self.play(ReplacementTransform(self.caption, text), enqueue=True)
         self.caption = text
-
-    def app_action(self, text):
-        caption_pos = DOWN*3
-        text.move_to(caption_pos)
-        text.scale(0.4)
-        if self.caption == None:
-            self.play(Write(text), run_time=0.3, enqueue=True)
-        else:
-            self.play(ReplacementTransform(self.caption, text), enqueue=True)
-        self.caption = text
-
 
     def rand_displacement(self, factor=0.5):
         return sign(random()-factor)*LEFT*random() + sign(random()-factor)*UP*random()
